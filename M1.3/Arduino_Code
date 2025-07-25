@@ -1,0 +1,195 @@
+#include <DHT.h>
+
+#define DHTPIN 12  // digital pin number
+#define DHTTYPE DHT22  // DHT type 11 or 22
+DHT dht(DHTPIN, DHTTYPE);
+
+
+//Interrupt Flags 
+volatile bool handleMotion = false;
+volatile bool handleButton = false;
+volatile bool handleBlueLight = false;
+//External Interrupt variables
+volatile bool motionPin = false;
+volatile bool buttonPin = false;
+volatile bool motionPinPrev = false;
+volatile bool buttonPinPrev = false;
+//Button Pin
+int buttonPinNum = 2;
+int motionPinNum = 4;
+//LED Pins
+int blueLED = 11;
+int yellowLED = 10;
+int greenLED = 8;
+int redLED = 9;
+//Flags for LED's
+bool blue = false;
+bool yellow = false;
+bool green = false;
+bool red = false;
+
+
+
+//DHT22 setup
+float temp;
+int DHT_Interval = 5000;
+
+unsigned long startTime = 0;
+unsigned long currentTime = 0;
+
+
+
+void setupInterrupts()
+{
+  cli();
+  //Enables interrupts on port D
+  PCICR |= (1 << PCIE2);
+  //Sets 2 and 4 to interruptable
+  PCMSK2 |= (1 << PCINT18);    
+  PCMSK2 |= (1 << PCINT20);
+  sei();
+}
+
+void startTimer()
+{
+  cli();
+  //Sets timers to 0
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 0;
+
+  //Sets prescalar
+  TCCR1B |= (1 << CS10);
+  TCCR1B |= (1 << CS12);
+  TCCR1B |= (1 << WGM12);
+
+  OCR1A = 15624;
+  
+  TIMSK1 |= (1 << OCIE1A);
+
+
+  sei();
+}
+
+
+void setup() {
+  // put your setup code here, to run once:
+  pinMode(blueLED, OUTPUT);
+  pinMode(yellowLED, OUTPUT);
+  pinMode(redLED, OUTPUT);
+  pinMode(greenLED, OUTPUT);
+  pinMode(buttonPinNum, INPUT_PULLUP);
+  pinMode(motionPinNum, INPUT_PULLUP);
+
+
+  Serial.begin(9600);
+  startTimer();
+  setupInterrupts();
+  dht.begin();
+
+}
+
+void loop() {
+  currentTime = millis();
+  //Check if interrupt flags have been triggered
+  if (handleButton) { handleButtonMethod(); }
+  if (handleMotion) { handleMotionMethod(); }
+  if (handleBlueLight) { handleLightMethod(); }
+
+  //turns off yellow light if it is on
+  if (currentTime - startTime > 1000 && yellow) { toggleLights('y'); }
+
+  //Reads temperature
+  if (currentTime - startTime > DHT_Interval) { readTemp(); }
+}
+
+
+ISR(TIMER1_COMPA_vect)
+{
+  handleBlueLight = true;
+}
+
+ISR(PCINT2_vect)
+{
+  bool _buttonPin = digitalRead(2);
+  bool _motionPin = digitalRead(4);
+
+  if (_motionPin != motionPinPrev) 
+  {
+    motionPin = _motionPin;
+    handleMotion = true;  
+  }
+  
+  if (_buttonPin != buttonPinPrev) 
+  {
+    buttonPin = _buttonPin;
+    handleButton = true;
+  }
+
+}
+
+
+
+//Methods
+void handleLightMethod()
+{
+  handleBlueLight = false;
+  Serial.println("Blue light toggle");
+  toggleLights('b');
+}
+void handleButtonMethod()
+{
+  handleButton = false;
+  Serial.println("------Button Interrupt------");
+  buttonPinPrev = buttonPin;
+  toggleLights('r');
+}
+
+void handleMotionMethod()
+{
+  handleMotion = false;
+  Serial.println("------Motion Interrupt------");
+  motionPinPrev = motionPin;
+  toggleLights('g');
+}
+
+
+
+void toggleLights(char colour)
+{
+  switch(colour)
+  {
+    case 'r':
+      red = !red;
+      if (red) {digitalWrite(redLED, HIGH); }
+      else {digitalWrite(redLED, LOW); }
+      break;
+    case 'g':
+      green = !green;
+      if (green) {digitalWrite(greenLED, HIGH); }
+      else {digitalWrite(greenLED, LOW); }
+      break;
+    case 'b':
+      blue = !blue;
+      if (blue) {digitalWrite(blueLED, HIGH); }
+      else {digitalWrite(blueLED, LOW); }
+      break;
+    case 'y':
+      yellow = !yellow;
+      if (yellow) {digitalWrite(yellowLED, HIGH); }
+      else {digitalWrite(yellowLED, LOW); }
+      break;
+  }
+}
+
+void readTemp()
+{
+  temp = dht.readTemperature();
+  toggleLights('y');
+  Serial.println(String(temp));
+  startTime = millis();
+}
+
+
+
+
