@@ -1,0 +1,227 @@
+#include <iostream>
+#include <cstdlib>
+#include <time.h>
+#include <chrono>
+#include <thread>
+#include <vector>
+#include <numeric>
+
+using namespace std::chrono;
+using namespace std;
+
+
+
+void randomVector(int vector[], int size)
+{
+    for (int i = 0; i <= size - 1; i++)
+    {
+        //Adds random numbers to the array, the % 100 gives the remainder when divided by 100. This means the numbers will be no greater than 100. 
+        vector[i] = rand() % 100;
+    }
+}
+
+void doAddition(int v1[], int v2[], int v3[], int start, int end)
+{
+    for (int i = start; i < end; i++)
+    {
+        v3[i] = v1[i] + v2[i];
+    }
+
+}
+
+void arrayMalloc(int** array, unsigned long size)
+{
+    *array = (int *) malloc(size * sizeof(int));
+}
+
+
+int parallelFull(unsigned long size)
+{
+    const bool Print = false;
+
+    const int threads = 5;
+
+    srand(time(0));
+
+    int *v1, *v2, *v3;
+
+    //Start a super accurate clock, this allows us to get exact timing. The accuracy is 1 nanosecond
+    auto start = high_resolution_clock::now();
+
+    //Allocates memory for arrays
+    std::thread worker1(arrayMalloc, &v1, size);
+    std::thread worker2(arrayMalloc, &v2, size);
+    std::thread worker3(arrayMalloc, &v3, size);
+
+    worker1.join();
+    worker2.join();
+    worker3.join();
+
+    std::thread worker4(randomVector, v1, size);
+    std::thread worker5(randomVector, v2, size);
+    
+    worker4.join();
+    worker5.join();
+
+
+    //Adds the value of an element of v1 to the corresponding element of v2 and saves it to v3.
+
+    int chunkSize = size / threads;
+    
+    std::thread worker6(doAddition, v1, v2, v3, 0, chunkSize);
+    std::thread worker7(doAddition, v1, v2, v3, chunkSize, 2 * chunkSize);
+    std::thread worker8(doAddition, v1, v2, v3, 2 * chunkSize, 3 * chunkSize);
+    std::thread worker9(doAddition, v1, v2, v3, 3 * chunkSize, 4 * chunkSize);
+    std::thread worker10(doAddition, v1, v2, v3, 4 * chunkSize, size);
+
+    worker6.join();
+    worker7.join();
+    worker8.join();
+    worker9.join();
+    worker10.join();
+   
+    
+
+    auto stop = high_resolution_clock::now();
+
+    //Gets the amount of time taken to perform the array additions
+    auto duration = duration_cast<microseconds>(stop - start);
+
+
+    int time = duration.count();
+    cout << "Time taken by function: "
+         << duration.count() << " microseconds" << endl;
+
+    //Print array
+    if (Print)
+    {
+        for (int i = 0; i < size; i++) 
+        {
+            std::cout << v3[i] << " ";
+        }
+    }
+    
+
+    free(v1);
+    free(v2);
+    free(v3);
+
+    return time;
+}
+
+int parallelAddition(unsigned long size)
+{
+    const bool Print = false;
+
+    const int threads = 5;
+
+    srand(time(0));
+
+    int *v1, *v2, *v3;
+
+    //Start a super accurate clock, this allows us to get exact timing. The accuracy is 1 nanosecond
+    auto start = high_resolution_clock::now();
+
+    //Allocates memory for arrays
+    v1 = (int *) malloc(size * sizeof(int *));
+    v2 = (int *) malloc(size * sizeof(int *));
+    v3 = (int *) malloc(size * sizeof(int *));
+
+
+    randomVector(v1, size);
+
+    randomVector(v2, size);
+
+
+    //Adds the value of an element of v1 to the corresponding element of v2 and saves it to v3.
+
+    int chunkSize = size / threads;
+    
+    std::thread worker1(doAddition, v1, v2, v3, 0, chunkSize);
+    std::thread worker2(doAddition, v1, v2, v3, chunkSize, 2 * chunkSize);
+    std::thread worker3(doAddition, v1, v2, v3, 2 * chunkSize, 3 * chunkSize);
+    std::thread worker4(doAddition, v1, v2, v3, 3 * chunkSize, 4 * chunkSize);
+    std::thread worker5(doAddition, v1, v2, v3, 4 * chunkSize, size);
+
+    worker1.join();
+    worker2.join();
+    worker3.join();
+    worker4.join();
+    worker5.join();
+   
+    
+
+    auto stop = high_resolution_clock::now();
+
+    //Gets the amount of time taken to perform the array additions
+    auto duration = duration_cast<microseconds>(stop - start);
+
+    int time = duration.count();
+    cout << "Time taken by function: "
+         << duration.count() << " microseconds" << endl;
+
+    //Print array
+    if (Print)
+    {
+        for (int i = 0; i < size; i++) 
+        {
+            std::cout << v3[i] << " ";
+        }
+    }
+    
+
+    free(v1);
+    free(v2);
+    free(v3);
+
+    return time;
+}
+
+
+void runMultiple(unsigned long size, string speed)
+{
+    const int repetitions = 25;
+
+    int times[repetitions] = {};
+
+    for (int i = 0; i < repetitions; i++)
+    {
+        int time;
+        if (speed == "slow") { time = parallelAddition(size); }
+        if (speed == "fast") {time = parallelFull(size);}
+        times[i] = time; 
+    }
+
+    cout << "Array Elements: ";
+    for (int i = 0; i < repetitions; i++)
+        cout << times[i] << " ";
+    cout << endl;
+
+    int sum = std::accumulate(times, times + repetitions, 0);
+    cout << "average = " << sum / repetitions;
+
+}
+
+
+
+int main(){
+    string speed = "3";
+
+    unsigned long size = 10000000;
+
+    if (true)
+    {
+        runMultiple(size, speed);
+    }
+    else
+    {
+        if (speed == "slow") { parallelAddition(size); }
+        if (speed == "fast") {parallelFull(size);}
+    }
+
+
+
+    return 0;
+}
+
+
