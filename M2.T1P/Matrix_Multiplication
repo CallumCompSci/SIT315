@@ -1,0 +1,315 @@
+#include <iostream>
+#include <cstdlib>
+#include <time.h>
+#include <chrono>
+#include <thread>
+#include <fstream>
+#include <iomanip>
+#include <thread>
+#include <pthread.h>
+#include <omp.h>
+
+using namespace std::chrono;
+using namespace std;
+
+
+const int matrixSize = 120;
+
+const int array1Rows = matrixSize;
+const int array1Columns = matrixSize;
+const int array2Rows = matrixSize;
+const int array2Columns = matrixSize;
+
+int array1[array1Rows][array1Columns];
+int array2[array2Rows][array2Columns];
+int array3[array1Rows][array2Columns];
+
+
+int array4[array1Rows][array2Columns];
+int array5[array2Rows][array2Columns]; 
+int array6[array1Rows][array2Columns];
+int start;
+int end;
+
+int array7[array1Rows][array2Columns];
+
+
+void writeNumbers(int array1[][array1Columns], int array2[][array2Columns])
+{
+    //Write random figure to arrays
+
+    for(int i = 0; i < array1Columns; i++) {
+        for(int j = 0; j < array1Rows; j++) {
+            array1[i][j] = rand() % 1001;
+        }
+    }
+
+    for(int i = 0; i < array2Columns; i++) {
+        for(int j = 0; j < array2Rows; j++) {
+            array2[i][j] = rand() % 1001;
+        }
+    }
+}
+
+void multiplyArraysSERIAL(int array1[][array1Columns], int array2[][array2Columns], int array3[array1Rows][array2Columns])
+{
+    for (int i = 0; i < array1Rows; i++)
+    {
+        for (int j = 0; j < array2Columns; j++)
+        {
+            array3[i][j] = 0;
+            for (int k = 0; k < array2Rows; k++)
+            {
+                array3[i][j] += array1[i][k] * array2[k][j];
+            }
+            
+        }
+    }
+
+    
+}
+
+void multiplyArrays(int array1[][array1Columns], int array2[][array2Columns], int array4[array1Rows][array2Columns], int start, int end)
+{
+    for (int i = start; i < end; i++)
+    {
+        for (int j = 0; j < array2Columns; j++)
+        {
+            array4[i][j] = 0;
+            for (int k = 0; k < array2Rows; k++)
+            {
+                array4[i][j] += array1[i][k] * array2[k][j];
+            }
+            
+        }
+    }
+    
+}
+
+struct ThreadArgs {
+    int (*array4)[array1Columns];
+    int (*array5)[array2Columns]; 
+    int (*array6)[array2Columns];
+    int start;
+    int end;
+};
+
+void *PthreadMultiplyArrays(void *args)
+{
+    ThreadArgs* tArgs = (ThreadArgs*)args;
+    for (int i = tArgs->start; i < tArgs->end; i++)
+    {
+        for (int j = 0; j < array2Columns; j++)
+        {
+            tArgs->array6[i][j] = 0;
+            for (int k = 0; k < array2Rows; k++)
+            {
+                tArgs->array6[i][j] += array4[i][k] * array5[k][j];
+            }
+            
+        }
+    }
+
+    return 0;
+    
+}
+
+void OpenMP(int array1[][array1Columns], int array2[][array2Columns], int array7[array1Rows][array2Columns])
+{
+    #pragma omp parallel for schedule(guided)
+    for (int i = 0; i < matrixSize; i++)
+    {
+        for (int j = 0; j < matrixSize; j++)
+        {
+            array7[i][j] = 0;
+            for (int k = 0; k < matrixSize; k++)
+            {
+                array7[i][j] += array1[i][k] * array2[k][j];
+            }
+            
+        }
+    }
+}
+
+void printArray(int array[array1Rows][array2Columns])
+{
+    int limit = 20;
+    for(int i = 0; i < limit; i++) 
+        {
+            for(int j = 0; j < limit; j++) 
+            {
+                std::cout << array[i][j] << " ";
+            }
+            std::cout << std::endl; 
+        }
+}
+
+
+void writeOutput(int array[array1Rows][array2Columns])
+{
+    //Write to output file
+    std::ofstream file("C:\\Users\\aussc\\Documents\\Code\\T2 - 2025 CODE\\SIT315\\Matrix Multiplication\\output.txt");
+    if (file.is_open())
+    {
+        file << std::setw(4) << "hello";
+        for (int i = 0; i < array1Rows; i++) 
+        {
+            for (int j = 0; j < array2Columns; j++) 
+            {
+                file << std::setw(4) << array3[i][j];
+                if (j < array2Columns - 1) {
+                    file << " ";
+                }
+            }
+        file << std::endl; 
+        
+        }
+        cout << "Wrote array to file (hopefully)" << endl;
+        file.flush();
+        file.close();
+    }
+    else
+    {
+        cout << "Failed to open file";
+    }
+}
+
+int main()
+{
+
+    writeNumbers(array1, array2);
+    writeNumbers(array4, array5);
+
+    //Serial execution
+    if (true)
+    {
+
+
+        srand(time(0));
+        auto start = high_resolution_clock::now();
+
+        multiplyArraysSERIAL(array1, array2, array3);
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+
+        int time = duration.count();
+        cout << "Time taken by function: "
+            << duration.count() << " microseconds" << endl;
+
+        //printArray(array3);
+        writeOutput(array3);
+
+    }
+    
+    //Multi threaded
+    if (true)
+    {
+        int threads = 6;
+        int blockSize = array1Rows / threads;
+
+        srand(time(0));
+        auto start = high_resolution_clock::now();
+
+        std::thread worker1(multiplyArrays, array1, array2, array4, 0, blockSize);
+        std::thread worker2(multiplyArrays, array1, array2, array4, blockSize, 2 * blockSize);
+        std::thread worker3(multiplyArrays, array1, array2, array4, 2 * blockSize, 3 * blockSize);
+        std::thread worker4(multiplyArrays, array1, array2, array4, 3 * blockSize, 4 * blockSize);
+        std::thread worker5(multiplyArrays, array1, array2, array4, 4 * blockSize, 5 * blockSize);
+        std::thread worker6(multiplyArrays, array1, array2, array4, 5 * blockSize, matrixSize);
+
+        worker1.join();
+        worker2.join();
+        worker3.join();
+        worker4.join();
+        worker5.join();
+        worker6.join();
+
+
+
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+
+        int time = duration.count();
+        cout << "Time taken by std:thread function: "
+            << duration.count() << " microseconds" << endl;
+
+        
+        //printArray(array4);
+
+    }
+
+    //PThread implementation...what a nightmare
+    if (true)
+    {
+        int threads = 6;
+        int blockSize = array1Rows / threads;
+
+
+
+        pthread_t worker1, worker2, worker3, worker4, worker5, worker6;
+
+        srand(time(0));
+        auto start = high_resolution_clock::now();
+
+        ThreadArgs args1 = {array4, array5, array5, 0, blockSize};
+        ThreadArgs args2 = {array4, array5, array5, blockSize, 2 * blockSize};
+        ThreadArgs args3 = {array4, array5, array5, 2 * blockSize, 3 * blockSize};
+        ThreadArgs args4 = {array4, array5, array5, 3 * blockSize, 4 * blockSize};
+        ThreadArgs args5 = {array4, array5, array5, 4 * blockSize, 5 * blockSize};
+        ThreadArgs args6 = {array4, array5, array5, 5 * blockSize, matrixSize};
+
+        pthread_create(&worker1, NULL, PthreadMultiplyArrays, &args1);
+        pthread_create(&worker2, NULL, PthreadMultiplyArrays, &args2);
+        pthread_create(&worker3, NULL, PthreadMultiplyArrays, &args3);
+        pthread_create(&worker4, NULL, PthreadMultiplyArrays, &args4);
+        pthread_create(&worker5, NULL, PthreadMultiplyArrays, &args5);
+        pthread_create(&worker6, NULL, PthreadMultiplyArrays, &args6);
+
+        pthread_join(worker1, NULL);
+        pthread_join(worker2, NULL);
+        pthread_join(worker3, NULL);
+        pthread_join(worker4, NULL);
+        pthread_join(worker5, NULL);
+        pthread_join(worker6, NULL);
+        
+
+
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+
+        int time = duration.count();
+        cout << "Time taken by PThread function: "
+            << duration.count() << " microseconds" << endl;
+
+        
+        //printArray(array4);
+
+    }
+
+    //OpenMP implementation
+    if (true)
+    {
+        srand(time(0));
+        auto start = high_resolution_clock::now();
+
+        OpenMP(array1, array2, array7);
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+
+        int time = duration.count();
+        cout << "Time taken by OpenMP function: "
+            << duration.count() << " microseconds" << endl;
+
+        //printArray(array7);
+
+    }
+
+
+    return 0;
+
+}
+
