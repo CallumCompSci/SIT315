@@ -1,0 +1,421 @@
+#include <iostream>
+#include <cstdlib>
+#include <time.h>
+#include <chrono>
+#include <omp.h>
+#include <thread>
+#include <vector>
+#include <numeric>
+
+using namespace std::chrono;
+using namespace std;
+
+
+
+void randomVector(int vector[], int size)
+{
+    for (int i = 0; i < size; i++)
+    {
+
+        vector[i] = rand() % 100;
+    }
+}
+
+void arrayMalloc(int** array, unsigned long size)
+{
+    *array = (int *) malloc(size * sizeof(int));
+}
+
+void doAddition(int v1[], int v2[], int v3[], int start, int end)
+{
+    for (int i = start; i < end; i++)
+    {
+        v3[i] = v1[i] + v2[i];
+    }
+
+}
+
+
+int serial()
+{
+    unsigned long size = 100000000;
+
+    srand(time(0));
+
+    int *v1, *v2, *v3;
+
+    auto start = high_resolution_clock::now();
+
+    v1 = (int *) malloc(size * sizeof(int *));
+    v2 = (int *) malloc(size * sizeof(int *));
+    v3 = (int *) malloc(size * sizeof(int *));
+
+
+    randomVector(v1, size);
+
+    randomVector(v2, size);
+
+
+
+    for (int i = 0; i < size; i++)
+    {
+        v3[i] = v1[i] + v2[i];
+    }
+
+    auto stop = high_resolution_clock::now();
+
+    auto duration = duration_cast<microseconds>(stop - start);
+
+
+    int time = duration.count();
+    return time;
+}
+
+
+
+int stdThread()
+{
+    int threads= 5;
+    unsigned long size = 100000000;
+
+    srand(time(0));
+
+    int *v1, *v2, *v3;
+
+
+    auto start = high_resolution_clock::now();
+
+    std::thread worker1(arrayMalloc, &v1, size);
+    std::thread worker2(arrayMalloc, &v2, size);
+    std::thread worker3(arrayMalloc, &v3, size);
+
+    worker1.join();
+    worker2.join();
+    worker3.join();
+
+
+    std::thread worker4(randomVector, v1, size);
+    std::thread worker5(randomVector, v2, size);
+    
+    worker4.join();
+    worker5.join();
+
+
+    int chunkSize = size / threads;
+    
+    std::thread worker6(doAddition, v1, v2, v3, 0, chunkSize);
+    std::thread worker7(doAddition, v1, v2, v3, chunkSize, 2 * chunkSize);
+    std::thread worker8(doAddition, v1, v2, v3, 2 * chunkSize, 3 * chunkSize);
+    std::thread worker9(doAddition, v1, v2, v3, 3 * chunkSize, 4 * chunkSize);
+    std::thread worker10(doAddition, v1, v2, v3, 4 * chunkSize, size);
+
+    worker6.join();
+    worker7.join();
+    worker8.join();
+    worker9.join();
+    worker10.join();
+   
+
+
+
+    auto stop = high_resolution_clock::now();
+
+
+    auto duration = duration_cast<microseconds>(stop - start);
+
+
+    int time = duration.count();
+    return time;
+}
+
+
+
+int parallel()
+{
+    unsigned long size = 100000000;
+
+    srand(time(0));
+
+    int *v1, *v2, *v3;
+
+    auto start = high_resolution_clock::now();
+
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        {
+            v1 = (int *) malloc(size * sizeof(int *));
+        }
+        #pragma omp section
+        {
+            v2 = (int *) malloc(size * sizeof(int *));   
+        }
+        #pragma omp section
+        {    
+            v3 = (int *) malloc(size * sizeof(int *)); 
+        }
+    }
+    
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        {
+            randomVector(v1, size);
+        }
+        #pragma omp section
+        {
+            randomVector(v2, size); 
+        }
+    }
+
+
+    #pragma omp parallel for
+    for (int i = 0; i < size; i++)
+    {
+        //if (i == 0){ cout << "threads = " << omp_get_num_threads() << endl; }
+        v3[i] = v1[i] + v2[i];
+    }
+
+
+    auto stop = high_resolution_clock::now();
+
+    
+
+    auto duration = duration_cast<microseconds>(stop - start);
+
+    int sum = 0;
+    //Atomic, this allows each thread to edit sum at the same time. 
+ 
+    #pragma omp parallel for
+    for (int i = 0; i < size; i++)
+    {
+        #pragma omp atomic
+        sum += v3[i];
+    }
+
+    cout << "sum of v3 (atomic) = " << sum << endl;
+
+    sum = 0;
+    //Reduction, this ensures each thread has a private copy of sum, and the private variables are combined at the end
+
+    #pragma omp parallel for reduction(+:sum)
+    for (int i = 0; i < size; i++)
+    {
+        sum += v3[i];
+    }
+
+    cout << "sum of v3 (reduction) = " << sum << endl;
+    sum = 0;
+
+    int threadSum = 0;
+    #pragma omp parallel private(threadSum)
+    {
+        threadSum = 0;
+
+        #pragma omp for
+        for (int i = 0; i < size; i++)
+        {
+            threadSum += v3[i];
+        }
+
+        #pragma omp critical
+        {
+            sum += threadSum;
+        }
+
+
+    }
+
+    cout << "sum of v3 (reduction) = " << sum << endl;
+    
+
+
+    
+
+
+    int time = duration.count();
+    return time;
+
+    
+}
+
+
+void parallelScheduling()
+{
+    unsigned long size = 100000000;
+
+    srand(time(0));
+
+    int *v1, *v2, *v3;
+
+
+    
+
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        {
+            v1 = (int *) malloc(size * sizeof(int *));
+        }
+        #pragma omp section
+        {
+            v2 = (int *) malloc(size * sizeof(int *));   
+        }
+        #pragma omp section
+        {    
+            v3 = (int *) malloc(size * sizeof(int *)); 
+        }
+    }
+    
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        {
+            randomVector(v1, size);
+        }
+        #pragma omp section
+        {
+            randomVector(v2, size); 
+        }
+    }
+    
+    auto start = high_resolution_clock::now();
+    #pragma omp parallel for
+    for (int i = 0; i < size; i++)
+    {
+        if (i == 0){ cout << "threads = " << omp_get_num_threads() << endl; }
+        v3[i] = v1[i] + v2[i];
+    }
+
+
+    auto stop = high_resolution_clock::now();
+
+    auto duration = duration_cast<microseconds>(stop - start);
+
+    int sum = 0;
+     
+ 
+
+    int time = duration.count();
+    cout << "Time taken with no scheduling: " << time << endl;
+
+    
+    start = high_resolution_clock::now();
+
+    #pragma omp parallel for schedule(static, 10)
+    for (int i = 0; i < size; i++)
+    {
+        v3[i] = v1[i] + v2[i];
+    }
+
+
+
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with static scheduling & chunk size of 10: " << time << endl;
+
+    start = high_resolution_clock::now();
+
+    #pragma omp parallel for schedule(static, 5)
+    for (int i = 0; i < size; i++)
+    {
+        v3[i] = v1[i] + v2[i];
+    }
+
+
+
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with static scheduling & chunk size of 5: " << time << endl;
+
+
+
+    start = high_resolution_clock::now();
+
+    #pragma omp parallel for schedule(static, 15)
+    for (int i = 0; i < size; i++)
+    {
+        v3[i] = v1[i] + v2[i];
+    }
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with static scheduling & chunk size of 15: " << time << endl;
+
+
+    //GUIDED
+
+    start = high_resolution_clock::now();
+    #pragma omp parallel for schedule(guided)
+    for (int i = 0; i < size; i++)
+    {
+        if (i == 0){ cout << "threads = " << omp_get_num_threads() << endl; }
+        v3[i] = v1[i] + v2[i];
+    }
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with guided scheduling: " << time << endl;
+
+    start = high_resolution_clock::now();
+    #pragma omp parallel for schedule(guided, 10)
+    for (int i = 0; i < size; i++)
+    {
+        if (i == 0){ cout << "threads = " << omp_get_num_threads() << endl; }
+        v3[i] = v1[i] + v2[i];
+    }
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with guided scheduling & chunk size of 10: " << time << endl;
+
+
+    start = high_resolution_clock::now();
+    //dynamic
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < size; i++)
+    {
+        if (i == 0){ cout << "threads = " << omp_get_num_threads() << endl; }
+        v3[i] = v1[i] + v2[i];
+    }
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with dynamic scheduling: " << time << endl;
+
+    start = high_resolution_clock::now();
+    //auto
+    #pragma omp parallel for schedule(auto)
+    for (int i = 0; i < size; i++)
+    {
+        if (i == 0){ cout << "threads = " << omp_get_num_threads() << endl; }
+        v3[i] = v1[i] + v2[i];
+    }
+    stop = high_resolution_clock::now();
+    duration = duration_cast<microseconds>(stop - start);
+    time = duration.count();
+    cout << "Time taken with auto scheduling: " << time << endl;
+}   
+
+
+
+
+int main()
+{
+
+    if (true)
+    {
+        int time1 = serial();
+        cout << "serial time: " << time1 << endl;
+        int time2 = stdThread();
+        cout << "std:Thread time: " << time2 << endl;
+        int time3 = parallel();
+        cout << "Basic OpenMP time: " << time3 << endl;
+    }
+    parallel();
+    parallelScheduling();
+    
+
+}
