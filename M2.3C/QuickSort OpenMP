@@ -1,0 +1,169 @@
+#include <iostream>
+#include <vector>
+#include <cstdlib>
+#include <ctime> 
+#include <omp.h>
+#include <cstdlib>
+#include <time.h>
+#include <chrono>
+
+using namespace std::chrono;
+using namespace std;
+
+int partition(vector<int> &vec, int low, int high) 
+{
+
+    int pivot = vec[high];
+
+    int i = (low - 1);
+
+    for (int j = low; j <= high - 1; j++) {
+
+        if (vec[j] <= pivot) {
+            i++;
+            swap(vec[i], vec[j]);
+        }
+    }
+
+    swap(vec[i + 1], vec[high]);
+
+    return (i + 1);
+}
+
+
+void quickSort(vector<int> &vec, int low, int high) 
+{
+
+    if (low < high) {
+
+        int pi = partition(vec, low, high);
+
+        quickSort(vec, low, pi - 1);
+        quickSort(vec, pi + 1, high);
+    }
+}
+
+
+
+void quickSortOMP(vector<int> &vec, int low, int high) 
+{
+
+    if (low < high) {
+
+        int pi = partition(vec, low, high);
+
+        if(high - low > 5000)
+        {
+            #pragma omp task shared(vec) firstprivate(low, pi)
+            quickSortOMP(vec, low, pi - 1);
+
+            #pragma omp task shared(vec) firstprivate(pi, high)
+            quickSortOMP(vec, pi + 1, high);
+
+
+            #pragma omp taskwait
+        }
+        else 
+        {
+            quickSort(vec, low, pi - 1);
+            quickSort(vec, pi + 1, high);
+        }
+        
+        
+        
+    }
+}
+
+
+
+void writeToVector(vector<int> &vector, int size)
+{
+    for (int i = 0; i < size; i++)
+    {
+        vector[i] = rand() % 1000;
+    }
+}
+
+bool checkVector(vector<int> &vector, int size)
+{
+    bool isSorted = true;
+    for (int i = 1; i < size; i++)
+    {
+        if (vector[i] < vector[i - 1])
+        {
+            isSorted = false;
+            break;
+        }
+    }
+
+    return isSorted;
+
+}
+
+
+
+int main() {
+    int size = 1000000;
+    std::vector<int> vector(size, 0);
+    
+
+    writeToVector(vector, size);
+
+    std::vector<int> vectorCopy(vector);
+
+    if (true)
+    {
+        srand(time(0));
+        auto start = high_resolution_clock::now();
+
+        quickSort(vector, 0, size - 1);
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+
+        int time = duration.count();
+        cout << "Time taken by function: "
+            << duration.count() << " microseconds" << endl;
+
+    }
+    
+
+    if (true)
+    {
+        srand(time(0));
+        auto start = high_resolution_clock::now();
+
+        #pragma omp parallel
+        {
+            #pragma omp single
+            quickSortOMP(vectorCopy, 0, size - 1);
+        }
+        
+
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+
+        int time = duration.count();
+        cout << "Time taken by function: "
+            << duration.count() << " microseconds" << endl;
+
+    }
+
+   
+    
+
+
+
+    if (checkVector(vectorCopy, size))
+    {
+        cout << "Vector is sorted";
+    }
+    else
+    {
+        cout << "Vector is not sorted";
+    }
+
+
+
+    return 0;
+}
